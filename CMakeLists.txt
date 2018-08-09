@@ -1054,9 +1054,6 @@ else ()
                           SOVERSION "5"
                           OUTPUT_NAME "zmq"
                           PREFIX "lib")
-    if(ENABLE_DRAFTS)
-      target_compile_definitions(libzmq PUBLIC ZMQ_BUILD_DRAFT_API)
-    endif()
     if (ZMQ_BUILD_FRAMEWORK)
       set_target_properties (libzmq PROPERTIES
                             FRAMEWORK TRUE
@@ -1082,9 +1079,6 @@ else ()
       PUBLIC_HEADER "${public_headers}"
       OUTPUT_NAME "zmq"
       PREFIX "lib")
-    if(ENABLE_DRAFTS)
-      target_compile_definitions(libzmq PUBLIC ZMQ_BUILD_DRAFT_API)
-    endif()
   endif()
 
 endif ()
@@ -1094,6 +1088,9 @@ if (BUILD_STATIC)
     PUBLIC ZMQ_STATIC
   )
 endif ()
+if(ENABLE_DRAFTS)
+  target_compile_definitions(libzmq PUBLIC ZMQ_BUILD_DRAFT_API)
+endif()
 
 foreach (target ${target_outputs})
   target_include_directories (${target}
