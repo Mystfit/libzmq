@@ -978,6 +978,7 @@ option(BUILD_SHARED "Whether or not to build the shared object"  ON)
 option(BUILD_STATIC "Whether or not to build the static archive" ON)
 
 list(APPEND target_outputs "")
+list(APPEND target_defines "")
 
 if (BUILD_SHARED)
   list(APPEND target_outputs "libzmq")
@@ -985,6 +986,10 @@ endif()
 
 if (BUILD_STATIC)
   list(APPEND target_outputs "libzmq-static")
+endif()
+
+if(ENABLE_DRAFTS)
+  list(APPEND target_defines ZMQ_BUILD_DRAFT_API)
 endif()
 
 if (MSVC)
@@ -1080,17 +1085,16 @@ else ()
       OUTPUT_NAME "zmq"
       PREFIX "lib")
   endif()
-
+  target_compile_definitions(libzmq-static
+    PUBLIC ${target_defines}
+  )
 endif ()
 
 if (BUILD_STATIC)
   target_compile_definitions(libzmq-static
-    PUBLIC ZMQ_STATIC
+    PUBLIC ZMQ_STATIC ${target_defines}
   )
 endif ()
-if(ENABLE_DRAFTS)
-  target_compile_definitions(libzmq PUBLIC ZMQ_BUILD_DRAFT_API)
-endif()
 
 foreach (target ${target_outputs})
   target_include_directories (${target}
