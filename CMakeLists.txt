@@ -1085,7 +1085,7 @@ else ()
       OUTPUT_NAME "zmq"
       PREFIX "lib")
   endif()
-  target_compile_definitions(libzmq-static
+  target_compile_definitions(libzmq
     PUBLIC ${target_defines}
   )
 endif ()
