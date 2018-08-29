@@ -74,6 +74,8 @@ after which either peer can send messages asynchronously, to the other.
 
 The client-server pattern is formally defined by http://rfc.zeromq.org/spec:41.
 
+NOTE: Server-client is still in draft phase.
+
 ZMQ_CLIENT
 ^^^^^^^^^^
 A 'ZMQ_CLIENT' socket talks to a 'ZMQ_SERVER' socket. Either peer can connect,
@@ -355,6 +357,11 @@ When a 'ZMQ_PAIR' socket enters the 'mute' state due to having reached the
 high water mark for the connected peer, or if no peer is connected, then
 any linkzmq:zmq_send[3] operations on the socket shall block until the peer
 becomes available for sending; messages are not discarded.
+
+While 'ZMQ_PAIR' sockets can be used over transports other than linkzmq:zmq_inproc[7],
+their inability to auto-reconnect coupled with the fact new incoming connections will
+be terminated while any previous connections (including ones in a closing state)
+exist makes them unsuitable for TCP in most cases.
 
 NOTE: 'ZMQ_PAIR' sockets are designed for inter-thread communication across
 the linkzmq:zmq_inproc[7] transport and do not implement functionality such

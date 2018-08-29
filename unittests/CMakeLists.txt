@@ -5,6 +5,8 @@ set(unittests
   unittest_ypipe
   unittest_poller
   unittest_mtrie
+  unittest_ip_resolver
+  unittest_udp_address
 )
 
 #IF (ENABLE_DRAFTS)
@@ -20,15 +22,16 @@ if(WIN32)
     link_libraries(ws2_32.lib)
 endif()
 
-include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}")
+include_directories("${ZeroMQ_SOURCE_DIR}/include" "${ZeroMQ_SOURCE_DIR}/src" "${ZeroMQ_BINARY_DIR}")
+include_directories("${ZeroMQ_SOURCE_DIR}/external/unity")
 
 foreach(test ${unittests})
   # target_sources not supported before CMake 3.1
-  add_executable(${test} ${test}.cpp)
+  add_executable(${test} ${test}.cpp "unittest_resolver_common.hpp")
 
   # per-test directories not generated on OS X / Darwin
   if (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang.*")
-      link_directories(${test} PRIVATE "${CMAKE_SOURCE_DIR}/../lib")     
+      link_directories(${test} PRIVATE "${ZeroMQ_SOURCE_DIR}/../lib")     
   endif()
   
   target_link_libraries(${test} libzmq-static ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)

@@ -51,12 +51,11 @@ unsigned long zmq_stopwatch_intermediate (void *watch_);
 #define ZMQ_DGRAM 18
 
 /*  DRAFT Socket options.                                                     */
-#define ZMQ_GSSAPI_PRINCIPAL_NAMETYPE 90
-#define ZMQ_GSSAPI_SERVICE_PRINCIPAL_NAMETYPE 91
-#define ZMQ_BINDTODEVICE 92
 #define ZMQ_ZAP_ENFORCE_DOMAIN 93
 #define ZMQ_LOOPBACK_FASTPATH 94
 #define ZMQ_METADATA 95
+#define ZMQ_MULTICAST_LOOP 96
+#define ZMQ_ROUTER_NOTIFY 97
 
 /*  DRAFT 0MQ socket events and monitoring                                    */
 /*  Unspecified system errors during handshake. Event value is an errno.      */
@@ -96,27 +95,30 @@ unsigned long zmq_stopwatch_intermediate (void *watch_);
 #define ZMQ_PROTOCOL_ERROR_ZAP_INVALID_METADATA 0x20000005
 
 /*  DRAFT Context options                                                     */
-#define ZMQ_MSG_T_SIZE 6
 #define ZMQ_THREAD_AFFINITY_CPU_ADD 7
 #define ZMQ_THREAD_AFFINITY_CPU_REMOVE 8
 #define ZMQ_THREAD_NAME_PREFIX 9
 #define ZMQ_ZERO_COPY_RECV 10
 
 /*  DRAFT Socket methods.                                                     */
-int zmq_join (void *s, const char *group);
-int zmq_leave (void *s, const char *group);
+int zmq_join (void *s_, const char *group_);
+int zmq_leave (void *s_, const char *group_);
 
 /*  DRAFT Msg methods.                                                        */
-int zmq_msg_set_routing_id (zmq_msg_t *msg, uint32_t routing_id);
-uint32_t zmq_msg_routing_id (zmq_msg_t *msg);
-int zmq_msg_set_group (zmq_msg_t *msg, const char *group);
-const char *zmq_msg_group (zmq_msg_t *msg);
+int zmq_msg_set_routing_id (zmq_msg_t *msg_, uint32_t routing_id_);
+uint32_t zmq_msg_routing_id (zmq_msg_t *msg_);
+int zmq_msg_set_group (zmq_msg_t *msg_, const char *group_);
+const char *zmq_msg_group (zmq_msg_t *msg_);
 
 /*  DRAFT Msg property names.                                                 */
 #define ZMQ_MSG_PROPERTY_ROUTING_ID "Routing-Id"
 #define ZMQ_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
 #define ZMQ_MSG_PROPERTY_USER_ID "User-Id"
 #define ZMQ_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
+
+/*  Router notify options                                                     */
+#define ZMQ_NOTIFY_CONNECT 1
+#define ZMQ_NOTIFY_DISCONNECT 2
 
 /******************************************************************************/
 /*  Poller polling on sockets,fd and thread-safe sockets                      */
@@ -135,56 +137,35 @@ typedef struct zmq_poller_event_t
 } zmq_poller_event_t;
 
 void *zmq_poller_new (void);
-int zmq_poller_destroy (void **poller_p);
-int zmq_poller_add (void *poller, void *socket, void *user_data, short events);
-int zmq_poller_modify (void *poller, void *socket, short events);
-int zmq_poller_remove (void *poller, void *socket);
-int zmq_poller_wait (void *poller, zmq_poller_event_t *event, long timeout);
-int zmq_poller_wait_all (void *poller,
-                         zmq_poller_event_t *events,
-                         int n_events,
-                         long timeout);
+int zmq_poller_destroy (void **poller_p_);
+int zmq_poller_add (void *poller_,
+                    void *socket_,
+                    void *user_data_,
+                    short events_);
+int zmq_poller_modify (void *poller_, void *socket_, short events_);
+int zmq_poller_remove (void *poller_, void *socket_);
+int zmq_poller_wait (void *poller_, zmq_poller_event_t *event_, long timeout_);
+int zmq_poller_wait_all (void *poller_,
+                         zmq_poller_event_t *events_,
+                         int n_events_,
+                         long timeout_);
 
 #if defined _WIN32
-int zmq_poller_add_fd (void *poller, SOCKET fd, void *user_data, short events);
-int zmq_poller_modify_fd (void *poller, SOCKET fd, short events);
-int zmq_poller_remove_fd (void *poller, SOCKET fd);
+int zmq_poller_add_fd (void *poller_,
+                       SOCKET fd_,
+                       void *user_data_,
+                       short events_);
+int zmq_poller_modify_fd (void *poller_, SOCKET fd_, short events_);
+int zmq_poller_remove_fd (void *poller_, SOCKET fd_);
 #else
 int zmq_poller_add_fd (void *poller, int fd, void *user_data, short events);
 int zmq_poller_modify_fd (void *poller, int fd, short events);
 int zmq_poller_remove_fd (void *poller, int fd);
 #endif
 
-int zmq_socket_get_peer_state (void *socket,
-                               const void *routing_id,
-                               size_t routing_id_size);
-
-/******************************************************************************/
-/*  Scheduling timers                                                         */
-/******************************************************************************/
-
-typedef void(zmq_timer_fn) (int timer_id, void *arg);
-
-void *zmq_timers_new (void);
-int zmq_timers_destroy (void **timers_p);
-int zmq_timers_add (void *timers,
-                    size_t interval,
-                    zmq_timer_fn handler,
-                    void *arg);
-int zmq_timers_cancel (void *timers, int timer_id);
-int zmq_timers_set_interval (void *timers, int timer_id, size_t interval);
-int zmq_timers_reset (void *timers, int timer_id);
-long zmq_timers_timeout (void *timers);
-int zmq_timers_execute (void *timers);
-
-/******************************************************************************/
-/*  GSSAPI definitions                                                        */
-/******************************************************************************/
-
-/*  GSSAPI principal name types                                               */
-#define ZMQ_GSSAPI_NT_HOSTBASED 0
-#define ZMQ_GSSAPI_NT_USER_NAME 1
-#define ZMQ_GSSAPI_NT_KRB5_PRINCIPAL 2
+int zmq_socket_get_peer_state (void *socket_,
+                               const void *routing_id_,
+                               size_t routing_id_size_);
 
 #endif // ZMQ_BUILD_DRAFT_API
 

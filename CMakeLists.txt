@@ -7,6 +7,23 @@ list (INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}")
 set (ZMQ_CMAKE_MODULES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/builds/cmake/Modules)
 list (APPEND CMAKE_MODULE_PATH ${ZMQ_CMAKE_MODULES_DIR})
 
+# Apply CMP0042: MACOSX_RPATH is enabled by default
+cmake_policy (SET CMP0042 NEW)
+
+include(GNUInstallDirs)
+if (${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+  # Find more information: https://cmake.org/Wiki/CMake_RPATH_handling
+
+  # Add an install rpath if it is not a system directory
+  list (FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}" isSystemDir)
+  if ("${isSystemDir}" STREQUAL "-1")
+    set (CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
+  endif ()
+
+  # Add linker search paths pointing to external dependencies
+  set (CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+endif ()
+
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=gnu++11" COMPILER_SUPPORTS_CXX11)
 if(COMPILER_SUPPORTS_CXX11)
@@ -16,6 +33,20 @@ include(CheckCCompilerFlag)
 CHECK_C_COMPILER_FLAG("-std=gnu11" COMPILER_SUPPORTS_C11)
 if(COMPILER_SUPPORTS_C11)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11")
+endif()
+
+include (ZMQSupportMacros)
+
+if(NOT MSVC)
+    # clang 6 has a warning that does not make sense on multi-platform code
+    CHECK_CXX_COMPILER_FLAG("-Wno-tautological-constant-compare" CXX_HAS_TAUT_WARNING)
+    if(CXX_HAS_TAUT_WARNING)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-tautological-constant-compare")
+    endif()
+    CHECK_C_COMPILER_FLAG("-Wno-tautological-constant-compare" CC_HAS_TAUT_WARNING)
+    if(CC_HAS_TAUT_WARNING)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-tautological-constant-compare")
+    endif()
 endif()
 
 # Will be used to add flags to pkg-config useful when apps want to statically link
@@ -77,60 +108,65 @@ if (WITH_MILITANT)
     add_definitions(-DZMQ_ACT_MILITANT)
 endif()
 
-set (POLLER "" CACHE STRING "Choose polling system. valid values are
+set (API_POLLER "" CACHE STRING "Choose polling system for zmq_poll(er)_*. valid values are
+                            poll or select [default=poll unless POLLER=select]")
+
+set (POLLER "" CACHE STRING "Choose polling system for I/O threads. valid values are
                             kqueue, epoll, devpoll, pollset, poll or select [default=autodetect]")
 
 include (CheckFunctionExists)
 include (CheckTypeSize)
 
-if (POLLER STREQUAL "")
-    set (CMAKE_REQUIRED_INCLUDES sys/event.h)
-    check_function_exists (kqueue HAVE_KQUEUE)
-    set (CMAKE_REQUIRED_INCLUDES)
-    if (HAVE_KQUEUE)
-        set (POLLER "kqueue")
-    endif()
-endif ()
+if (NOT MSVC)
+    if (POLLER STREQUAL "")
+        set (CMAKE_REQUIRED_INCLUDES sys/event.h)
+        check_function_exists (kqueue HAVE_KQUEUE)
+        set (CMAKE_REQUIRED_INCLUDES)
+        if (HAVE_KQUEUE)
+            set (POLLER "kqueue")
+        endif()
+    endif ()
 
-if (POLLER STREQUAL "")
-    set (CMAKE_REQUIRED_INCLUDES sys/epoll.h)
-    check_function_exists (epoll_create HAVE_EPOLL)
-    set (CMAKE_REQUIRED_INCLUDES)
-    if (HAVE_EPOLL)
-        set (POLLER "epoll")
-        check_function_exists (epoll_create1 HAVE_EPOLL_CLOEXEC)
-        if (HAVE_EPOLL_CLOEXEC)
-            set (ZMQ_USE_EPOLL_CLOEXEC 1)
+    if (POLLER STREQUAL "")
+        set (CMAKE_REQUIRED_INCLUDES sys/epoll.h)
+        check_function_exists (epoll_create HAVE_EPOLL)
+        set (CMAKE_REQUIRED_INCLUDES)
+        if (HAVE_EPOLL)
+            set (POLLER "epoll")
+            check_function_exists (epoll_create1 HAVE_EPOLL_CLOEXEC)
+            if (HAVE_EPOLL_CLOEXEC)
+                set (ZMQ_IOTHREAD_POLLER_USE_EPOLL_CLOEXEC 1)
+            endif ()
         endif ()
     endif ()
-endif ()
 
-if (POLLER STREQUAL "")
-    set (CMAKE_REQUIRED_INCLUDES sys/devpoll.h)
-    check_type_size ("struct pollfd" DEVPOLL)
-    set (CMAKE_REQUIRED_INCLUDES)
-    if (HAVE_DEVPOLL)
-        set (POLLER "devpoll")
+    if (POLLER STREQUAL "")
+        set (CMAKE_REQUIRED_INCLUDES sys/devpoll.h)
+        check_type_size ("struct pollfd" DEVPOLL)
+        set (CMAKE_REQUIRED_INCLUDES)
+        if (HAVE_DEVPOLL)
+            set (POLLER "devpoll")
+        endif ()
     endif ()
-endif ()
 
-if (POLLER STREQUAL "")
-    set (CMAKE_REQUIRED_INCLUDES sys/pollset.h)
-    check_function_exists (pollset_create HAVE_POLLSET)
-    set (CMAKE_REQUIRED_INCLUDES)
-    if (HAVE_POLLSET)
-        set (POLLER "pollset")
-    endif()
-endif ()
-
-if (POLLER STREQUAL "")
-    set (CMAKE_REQUIRED_INCLUDES poll.h)
-    check_function_exists (poll HAVE_POLL)
-    set (CMAKE_REQUIRED_INCLUDES)
-    if (HAVE_POLL)
-        set (POLLER "poll")
+    if (POLLER STREQUAL "")
+        set (CMAKE_REQUIRED_INCLUDES sys/pollset.h)
+        check_function_exists (pollset_create HAVE_POLLSET)
+        set (CMAKE_REQUIRED_INCLUDES)
+        if (HAVE_POLLSET)
+            set (POLLER "pollset")
+        endif()
     endif ()
-endif ()
+
+    if (POLLER STREQUAL "")
+        set (CMAKE_REQUIRED_INCLUDES poll.h)
+        check_function_exists (poll HAVE_POLL)
+        set (CMAKE_REQUIRED_INCLUDES)
+        if (HAVE_POLL)
+            set (POLLER "poll")
+        endif ()
+    endif ()
+endif()
 
 if (POLLER STREQUAL "")
     if (WIN32)
@@ -155,12 +191,29 @@ if (POLLER STREQUAL "kqueue"
  OR POLLER STREQUAL "pollset"
  OR POLLER STREQUAL "poll"
  OR POLLER STREQUAL "select")
-    message (STATUS "Detected ${POLLER} polling method")
+    message (STATUS "Using polling method in I/O threads: ${POLLER}")
     string (TOUPPER ${POLLER} UPPER_POLLER)
-    set (ZMQ_USE_${UPPER_POLLER} 1)
+    set (ZMQ_IOTHREAD_POLLER_USE_${UPPER_POLLER} 1)
 else ()
     message (FATAL_ERROR "Invalid polling method")
 endif ()
+
+if (POLLER STREQUAL "epoll" AND WIN32)
+    message (STATUS "Including wepoll")
+    list (APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/external/wepoll/wepoll.c ${CMAKE_CURRENT_SOURCE_DIR}/external/wepoll/wepoll.h)
+endif()
+
+if (API_POLLER STREQUAL "")
+	if (POLLER STREQUAL "select")
+		set (API_POLLER "select")
+	else()
+		set (API_POLLER "poll")
+	endif()
+endif()
+
+message (STATUS "Using polling method in zmq_poll(er)_* API: ${API_POLLER}")
+    string (TOUPPER ${API_POLLER} UPPER_API_POLLER)
+set (ZMQ_POLL_BASED_ON_${UPPER_API_POLLER} 1)
 
 include (TestZMQVersion)
 if (NOT CMAKE_CROSSCOMPILING)
@@ -176,18 +229,23 @@ include (CMakeDependentOption)
 include (CheckCXXSymbolExists)
 include (CheckSymbolExists)
 
-check_include_files (ifaddrs.h ZMQ_HAVE_IFADDRS)
-check_include_files (windows.h ZMQ_HAVE_WINDOWS)
+if (NOT CYGWIN)
+    # TODO cannot we simply do 'if (WIN32) set(ZMQ_HAVE_WINDOWS ON)' or similar?
+    check_include_files (windows.h ZMQ_HAVE_WINDOWS)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND CMAKE_SYSTEM_VERSION STREQUAL "10.0")
   SET(ZMQ_HAVE_WINDOWS_UWP ON)
   ADD_DEFINITIONS(-D_WIN32_WINNT=_WIN32_WINNT_WIN10)
 endif()
-check_include_files (sys/uio.h ZMQ_HAVE_UIO)
-check_include_files (sys/eventfd.h ZMQ_HAVE_EVENTFD)
-if (ZMQ_HAVE_EVENTFD AND NOT CMAKE_CROSSCOMPILING)
-  zmq_check_efd_cloexec ()
-endif ()
-
+if (NOT MSVC)
+    check_include_files (ifaddrs.h ZMQ_HAVE_IFADDRS)
+    check_include_files (sys/uio.h ZMQ_HAVE_UIO)
+    check_include_files (sys/eventfd.h ZMQ_HAVE_EVENTFD)
+    if (ZMQ_HAVE_EVENTFD AND NOT CMAKE_CROSSCOMPILING)
+      zmq_check_efd_cloexec ()
+    endif ()
+endif()
 
 if (ZMQ_HAVE_WINDOWS)
   # Cannot use check_library_exists because the symbol is always declared as char(*)(void)
@@ -227,25 +285,27 @@ if (WIN32 AND NOT CYGWIN)
   endif ()
 endif ()
 
-set (CMAKE_REQUIRED_LIBRARIES rt)
-check_function_exists (clock_gettime HAVE_CLOCK_GETTIME)
-set (CMAKE_REQUIRED_LIBRARIES)
+if (NOT MSVC)
+    set (CMAKE_REQUIRED_LIBRARIES rt)
+    check_function_exists (clock_gettime HAVE_CLOCK_GETTIME)
+    set (CMAKE_REQUIRED_LIBRARIES)
 
-set (CMAKE_REQUIRED_INCLUDES unistd.h)
-check_function_exists (fork HAVE_FORK)
-set (CMAKE_REQUIRED_INCLUDES)
+    set (CMAKE_REQUIRED_INCLUDES unistd.h)
+    check_function_exists (fork HAVE_FORK)
+    set (CMAKE_REQUIRED_INCLUDES)
 
-set (CMAKE_REQUIRED_INCLUDES sys/time.h)
-check_function_exists (gethrtime HAVE_GETHRTIME)
-set (CMAKE_REQUIRED_INCLUDES)
+    set (CMAKE_REQUIRED_INCLUDES sys/time.h)
+    check_function_exists (gethrtime HAVE_GETHRTIME)
+    set (CMAKE_REQUIRED_INCLUDES)
 
-set (CMAKE_REQUIRED_INCLUDES stdlib.h)
-check_function_exists (mkdtemp HAVE_MKDTEMP)
-set (CMAKE_REQUIRED_INCLUDES)
+    set (CMAKE_REQUIRED_INCLUDES stdlib.h)
+    check_function_exists (mkdtemp HAVE_MKDTEMP)
+    set (CMAKE_REQUIRED_INCLUDES)
 
-set (CMAKE_REQUIRED_INCLUDES sys/socket.h)
-check_function_exists (accept4 HAVE_ACCEPT4)
-set (CMAKE_REQUIRED_INCLUDES)
+    set (CMAKE_REQUIRED_INCLUDES sys/socket.h)
+    check_function_exists (accept4 HAVE_ACCEPT4)
+    set (CMAKE_REQUIRED_INCLUDES)
+endif()
 
 add_definitions (-D_REENTRANT -D_THREAD_SAFE)
 add_definitions (-DZMQ_CUSTOM_PLATFORM_HPP)
@@ -260,9 +320,32 @@ macro (zmq_check_cxx_flag_prepend flag)
   endif ()
 endmacro ()
 
+OPTION (ENABLE_ANALYSIS "Build with static analysis (make take very long)" OFF)
 
 if (MSVC)
-  zmq_check_cxx_flag_prepend ("/W3")
+  if (ENABLE_ANALYSIS)  
+    zmq_check_cxx_flag_prepend ("/W4")
+
+    zmq_check_cxx_flag_prepend ("/analyze")
+    
+    # C++11/14/17-specific, but maybe possible via conditional defines
+    zmq_check_cxx_flag_prepend ("/wd26440") # Function '...' can be declared 'noexcept' 
+    zmq_check_cxx_flag_prepend ("/wd26432") # If you define or delete any default operation in the type '...', define or delete them all
+    zmq_check_cxx_flag_prepend ("/wd26439") # This kind of function may not throw. Declare it 'noexcept' 
+    zmq_check_cxx_flag_prepend ("/wd26447") # The function is declared 'noexcept' but calls function '...' which may throw exceptions
+    zmq_check_cxx_flag_prepend ("/wd26433") # Function '...' should be marked with 'override'
+    zmq_check_cxx_flag_prepend ("/wd26409") # Avoid calling new and delete explicitly, use std::make_unique<T> instead
+    # Requires GSL
+    zmq_check_cxx_flag_prepend ("/wd26429") # Symbol '...' is never tested for nullness, it can be marked as not_null
+    zmq_check_cxx_flag_prepend ("/wd26446") # Prefer to use gsl::at()
+    zmq_check_cxx_flag_prepend ("/wd26481") # Don't use pointer arithmetic. Use span instead
+    zmq_check_cxx_flag_prepend ("/wd26472") # Don't use a static_cast for arithmetic conversions. Use brace initialization, gsl::narrow_cast or gsl::narow
+    zmq_check_cxx_flag_prepend ("/wd26448") # Consider using gsl::finally if final action is intended
+    zmq_check_cxx_flag_prepend ("/wd26400") # Do not assign the result of an allocation or a function call with an owner<T> return value to a raw pointer, use owner<T> instead    
+    zmq_check_cxx_flag_prepend ("/wd26485") # Expression '...': No array to pointer decay (bounds.3)
+  else()
+    zmq_check_cxx_flag_prepend ("/W3")
+  endif()
 
   if (MSVC_IDE)
     set (MSVC_TOOLSET "-${CMAKE_VS_PLATFORM_TOOLSET}")
@@ -277,30 +360,36 @@ if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   zmq_check_cxx_flag_prepend ("-Wextra")
 endif ()
 
-#   TODO: why is -Wno-long-long defined differently than in configure.ac?
-zmq_check_cxx_flag_prepend ("-Wno-long-long")
-zmq_check_cxx_flag_prepend ("-Wno-uninitialized")
-
 option (LIBZMQ_PEDANTIC "" ON)
 option (LIBZMQ_WERROR "" OFF)
 
-if (LIBZMQ_PEDANTIC)
-  zmq_check_cxx_flag_prepend ("-pedantic")
+#   TODO: why is -Wno-long-long defined differently than in configure.ac?
+if (NOT MSVC)
+    zmq_check_cxx_flag_prepend ("-Wno-long-long")
+    zmq_check_cxx_flag_prepend ("-Wno-uninitialized")
 
-  if (${CMAKE_CXX_COMPILER_ID} MATCHES "Intel")
-    zmq_check_cxx_flag_prepend ("-strict-ansi")
-  endif ()
+    if (LIBZMQ_PEDANTIC)
+      zmq_check_cxx_flag_prepend ("-pedantic")
 
-  if (${CMAKE_CXX_COMPILER_ID} MATCHES "SunPro")
-    zmq_check_cxx_flag_prepend ("-compat=5")
-  endif ()
-endif ()
+      if (${CMAKE_CXX_COMPILER_ID} MATCHES "Intel")
+        zmq_check_cxx_flag_prepend ("-strict-ansi")
+      endif ()
+
+      if (${CMAKE_CXX_COMPILER_ID} MATCHES "SunPro")
+        zmq_check_cxx_flag_prepend ("-compat=5")
+      endif ()
+    endif ()
+endif()
 
 if (LIBZMQ_WERROR)
-  zmq_check_cxx_flag_prepend ("-Werror")
-  if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    zmq_check_cxx_flag_prepend ("-errwarn=%all")
-  endif()
+    if(MSVC)
+        zmq_check_cxx_flag_prepend ("/WX")
+    else()
+        zmq_check_cxx_flag_prepend ("-Werror")
+        if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+            zmq_check_cxx_flag_prepend ("-errwarn=%all")
+        endif()
+    endif()
 endif ()
 
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^sparc")
@@ -332,9 +421,10 @@ if (CMAKE_SYSTEM_NAME MATCHES "SunOS" OR CMAKE_SYSTEM_NAME MATCHES "NetBSD")
   endif ()
 endif ()
 
+zmq_check_noexcept ()
 
 #-----------------------------------------------------------------------------
-if (NOT CMAKE_CROSSCOMPILING)
+if (NOT CMAKE_CROSSCOMPILING AND NOT MSVC)
   zmq_check_sock_cloexec ()
   zmq_check_o_cloexec ()
   zmq_check_so_bindtodevice ()
@@ -369,12 +459,10 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   add_definitions (-D_DARWIN_C_SOURCE)
 endif ()
 
-set (CMAKE_PYTHON_VERSION 2.7 2.6 2.5 2.4)
-find_package (PythonInterp)
 find_package (AsciiDoc)
 
 cmake_dependent_option (WITH_DOC "Build Reference Guide documentation (requires DocBook)" ON
-                       "PYTHONINTERP_FOUND;ASCIIDOC_FOUND" OFF)
+                       "ASCIIDOC_FOUND;NOT WIN32" OFF)  # Do not build docs on Windows due to issues with symlinks
 
 if (MSVC)
   if (WITH_OPENPGM)
@@ -461,8 +549,17 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
       FORCE)
 endif ()
 
-set (EXECUTABLE_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR}/bin)
-set (LIBRARY_OUTPUT_PATH  ${CMAKE_CURRENT_BINARY_DIR}/lib)
+#-----------------------------------------------------------------------------
+# output directories
+
+zmq_set_with_default(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${ZeroMQ_BINARY_DIR}/bin")
+if(UNIX)
+  set(zmq_library_directory "lib")
+else()
+  set(zmq_library_directory "bin")
+endif()
+zmq_set_with_default(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${ZeroMQ_BINARY_DIR}/${zmq_library_directory}")
+zmq_set_with_default(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${ZeroMQ_BINARY_DIR}/lib")
 
 #-----------------------------------------------------------------------------
 # platform specifics
@@ -477,6 +574,12 @@ endif ()
 if (MSVC)
   # Parallel make.
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP")
+
+  # Compile the static lib with debug information included
+  # note: we assume here that the default flags contain some /Z flag
+  string (REGEX REPLACE "/Z." "/Z7" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+  string (REGEX REPLACE "/Z." "/Z7" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 
   # Optimization flags.
   # http://msdn.microsoft.com/en-us/magazine/cc301698.aspx
@@ -536,6 +639,7 @@ set (cxx-sources
         plain_server.cpp
         poll.cpp
         poller_base.cpp
+        polling_util.cpp
         pollset.cpp
         proxy.cpp
         pub.cpp
@@ -582,6 +686,7 @@ set (cxx-sources
         udp_address.cpp
         scatter.cpp
         gather.cpp
+	ip_resolver.cpp
 		zap_client.cpp
 		# at least for VS, the header files must also be listed
 		address.hpp
@@ -652,10 +757,12 @@ set (cxx-sources
 		pgm_socket.hpp
 		pipe.hpp
 		plain_client.hpp
+		plain_common.hpp
 		plain_server.hpp
 		poll.hpp
 		poller.hpp
 		poller_base.hpp
+		polling_util.hpp
 		pollset.hpp
 		precompiled.hpp
 		proxy.hpp
@@ -793,7 +900,7 @@ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/src/libzmq.pc.cmake.in ${CMAKE_CURRE
 set (zmq-pkgconfig ${CMAKE_CURRENT_BINARY_DIR}/libzmq.pc)
 
 if (NOT ZMQ_BUILD_FRAMEWORK)
-  install (FILES ${CMAKE_CURRENT_BINARY_DIR}/libzmq.pc DESTINATION lib/pkgconfig)
+  install (FILES ${CMAKE_CURRENT_BINARY_DIR}/libzmq.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 endif ()
 
 if (MSVC)
@@ -848,8 +955,9 @@ endif ()
 
 if (MSVC)
     # default for all sources is to use precompiled headers
-    foreach(source ${sources})
-        if (NOT ${source} STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/precompiled.cpp")
+    foreach(source ${sources})    
+        # C and C++ can not use the same precompiled header
+        if (${soruce} MATCHES ".cpp$" AND NOT ${source} STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/precompiled.cpp")
             set_source_files_properties(${source}
                 PROPERTIES
                 COMPILE_FLAGS "/Yuprecompiled.hpp"
@@ -862,11 +970,6 @@ if (MSVC)
         PROPERTIES
         COMPILE_FLAGS "/Ycprecompiled.hpp"
         OBJECT_OUTPUTS precompiled.hpp
-        )
-    # C and C++ can not use the same precompiled header
-    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/tweetnacl.c
-        PROPERTIES
-        COMPILE_FLAGS "/Y-"
         )
 endif ()
 
@@ -890,15 +993,26 @@ if (MSVC)
   # Suppress linker warnings caused by #ifdef omission
   # of file content.
   set( CMAKE_STATIC_LINKER_FLAGS /ignore:4221 )
+  set (PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
+  set (PDB_NAME "libzmq${MSVC_TOOLSET}-mt-gd-${ZMQ_VERSION_MAJOR}_${ZMQ_VERSION_MINOR}_${ZMQ_VERSION_PATCH}")
+  function(enable_vs_guideline_checker target)
+    set_target_properties(${target} PROPERTIES
+        VS_GLOBAL_EnableCppCoreCheck true
+        VS_GLOBAL_CodeAnalysisRuleSet CppCoreCheckRules.ruleset
+        VS_GLOBAL_RunCodeAnalysis true)
+  endfunction()
   if (BUILD_SHARED)
     add_library (libzmq SHARED ${sources} ${public_headers} ${html-docs} ${readme-docs} ${CMAKE_CURRENT_BINARY_DIR}/NSIS.template.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+    if(ENABLE_ANALYSIS)
+        enable_vs_guideline_checker (libzmq)
+    endif()
     set_target_properties (libzmq PROPERTIES
       PUBLIC_HEADER "${public_headers}"
       RELEASE_POSTFIX "${MSVC_TOOLSET}-mt-${ZMQ_VERSION_MAJOR}_${ZMQ_VERSION_MINOR}_${ZMQ_VERSION_PATCH}"
       RELWITHDEBINFO_POSTFIX "${MSVC_TOOLSET}-mt-${ZMQ_VERSION_MAJOR}_${ZMQ_VERSION_MINOR}_${ZMQ_VERSION_PATCH}"
       MINSIZEREL_POSTFIX "${MSVC_TOOLSET}-mt-${ZMQ_VERSION_MAJOR}_${ZMQ_VERSION_MINOR}_${ZMQ_VERSION_PATCH}"
       DEBUG_POSTFIX "${MSVC_TOOLSET}-mt-gd-${ZMQ_VERSION_MAJOR}_${ZMQ_VERSION_MINOR}_${ZMQ_VERSION_PATCH}"
-      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin"
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
       COMPILE_DEFINITIONS "DLL_EXPORT"
       OUTPUT_NAME "libzmq")
   endif()
@@ -938,7 +1052,7 @@ else ()
     set_target_properties (libzmq PROPERTIES
                           COMPILE_DEFINITIONS "DLL_EXPORT"
                           PUBLIC_HEADER "${public_headers}"
-                          VERSION "5.1.5"
+                          VERSION "5.1.6"
                           SOVERSION "5"
                           OUTPUT_NAME "zmq"
                           PREFIX "lib")
@@ -997,7 +1111,7 @@ endforeach()
 
 if (BUILD_SHARED)
   target_link_libraries (libzmq ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
-  
+
   if (SODIUM_FOUND)
     target_link_libraries (libzmq ${SODIUM_LIBRARIES})
 	# On Solaris, libsodium depends on libssp
@@ -1005,7 +1119,7 @@ if (BUILD_SHARED)
       target_link_libraries (libzmq ssp)
     endif ()
   endif ()
-  
+
   if (HAVE_WS2_32)
     target_link_libraries (libzmq ws2_32)
   elseif (HAVE_WS2)
@@ -1027,7 +1141,7 @@ endif ()
 
 if (BUILD_STATIC)
   target_link_libraries (libzmq-static ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
-  
+
   if (SODIUM_FOUND)
     target_link_libraries (libzmq-static ${SODIUM_LIBRARIES})
     # On Solaris, libsodium depends on libssp
@@ -1035,7 +1149,7 @@ if (BUILD_STATIC)
       target_link_libraries (libzmq-static ssp)
     endif ()
   endif ()
-  
+
   if (HAVE_WS2_32)
     target_link_libraries (libzmq-static ws2_32)
   elseif (HAVE_WS2)
@@ -1114,9 +1228,7 @@ endif ()
 #-----------------------------------------------------------------------------
 # installer
 
-include(GNUInstallDirs)
-
-if (MSVC)
+if (MSVC AND (BUILD_SHARED OR BUILD_STATIC))
   install (TARGETS ${target_outputs}
           EXPORT ${PROJECT_NAME}-targets
           ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1124,23 +1236,18 @@ if (MSVC)
           RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
           PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
           COMPONENT SDK)
-  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    install (TARGETS ${target_outputs}
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            COMPONENT SDK)
-    if (NOT CMAKE_PDB_OUTPUT_DIRECTORY AND BUILD_SHARED)
-      install (FILES ${CMAKE_CURRENT_BINARY_DIR}/bin/libzmq${MSVC_TOOLSET}-mt-gd-${ZMQ_VERSION_MAJOR}_${ZMQ_VERSION_MINOR}_${ZMQ_VERSION_PATCH}.pdb DESTINATION lib
-            COMPONENT SDK)
-    endif ()
-  elseif (BUILD_SHARED)
+  if (MSVC_IDE)
+    install (FILES ${PDB_OUTPUT_DIRECTORY}/\${CMAKE_INSTALL_CONFIG_NAME}/${PDB_NAME}.pdb DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT SDK OPTIONAL)
+  else()
+    install (FILES ${PDB_OUTPUT_DIRECTORY}/${PDB_NAME}.pdb DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT SDK OPTIONAL)
+  endif()
+  if (BUILD_SHARED)
     install (TARGETS libzmq
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             COMPONENT Runtime)
   endif ()
-else ()
+elseif (BUILD_SHARED OR BUILD_STATIC)
   install (TARGETS ${target_outputs}
           EXPORT ${PROJECT_NAME}-targets
           RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -1183,7 +1290,7 @@ else()
   set(ZEROMQ_CMAKECONFIG_INSTALL_DIR "share/cmake/${PROJECT_NAME}" CACHE STRING "install path for ZeroMQConfig.cmake")
 endif()
 
-if (NOT CMAKE_VERSION VERSION_LESS 3.0)
+if ((NOT CMAKE_VERSION VERSION_LESS 3.0) AND (BUILD_SHARED OR BUILD_STATIC))
   export(EXPORT ${PROJECT_NAME}-targets
          FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 endif()
@@ -1193,12 +1300,14 @@ configure_package_config_file(builds/cmake/${PROJECT_NAME}Config.cmake.in
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
                                  VERSION ${ZMQ_VERSION_MAJOR}.${ZMQ_VERSION_MINOR}.${ZMQ_VERSION_PATCH}
                                  COMPATIBILITY AnyNewerVersion)
-install(EXPORT ${PROJECT_NAME}-targets
-        FILE ${PROJECT_NAME}Targets.cmake
-        DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
-              ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
-              DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
+if (BUILD_SHARED OR BUILD_STATIC)
+  install(EXPORT ${PROJECT_NAME}-targets
+          FILE ${PROJECT_NAME}Targets.cmake
+          DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
+                ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
+                DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
+endif()
 
 option(ENABLE_CPACK "Enables cpack rules" ON)
 if (MSVC AND ENABLE_CPACK)

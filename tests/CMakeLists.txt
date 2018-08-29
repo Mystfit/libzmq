@@ -28,7 +28,6 @@ set(tests
         test_stream_empty
         test_stream_disconnect
         test_disconnect_inproc
-        test_unbind_inproc
         test_unbind_wildcard
         test_ctx_options
         test_ctx_destroy
@@ -72,6 +71,7 @@ set(tests
         test_monitor
 		test_socket_null
 	test_reconnect_ivl
+        test_mock_pub_sub
 )
 if(ZMQ_HAVE_CURVE)
   list(APPEND tests 
@@ -90,8 +90,7 @@ if(NOT WIN32)
           test_filter_ipc
           test_stream_exceeds_buffer
           test_router_mandatory_hwm
-          test_use_fd_ipc
-          test_use_fd_tcp
+          test_use_fd
           test_zmq_poll_fd
   )
   if(HAVE_FORK)
@@ -135,6 +134,7 @@ IF (ENABLE_DRAFTS)
         test_scatter_gather
         test_dgram
         test_app_meta
+        test_router_notify
     )
 ENDIF (ENABLE_DRAFTS)
 
@@ -152,13 +152,16 @@ add_library (unity
     "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.h" 
     "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity_internals.h")
 set_target_properties (unity PROPERTIES
-    PUBLIC_HEADER "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.h")
+                             PUBLIC_HEADER "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.h")
 target_compile_definitions (unity PUBLIC "UNITY_USE_COMMAND_LINE_ARGS" "UNITY_EXCLUDE_FLOAT")
-target_include_directories (unity
-    PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../external/unity")
+target_include_directories (unity PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../external/unity")
 
 IF (MSVC_VERSION LESS 1700)
     SET_SOURCE_FILES_PROPERTIES("${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.c" PROPERTIES LANGUAGE CXX)
+ENDIF()
+
+IF (MSVC_VERSION LESS 1600)
+    target_compile_definitions (unity PUBLIC "UNITY_EXCLUDE_STDINT_H")
 ENDIF()
 
 # add library and include dirs for all targets
@@ -167,7 +170,7 @@ link_libraries(libzmq ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
 else ()
 link_libraries(libzmq-static ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
 endif ()
-include_directories("${CMAKE_SOURCE_DIR}/../include" "${CMAKE_BINARY_DIR}")
+include_directories("${ZeroMQ_SOURCE_DIR}/../include" "${ZeroMQ_BINARY_DIR}")
 
 foreach(test ${tests})
   # target_sources not supported before CMake 3.1
@@ -194,7 +197,7 @@ foreach(test ${tests})
   else()
     # per-test directories not generated on OS X / Darwin
     if (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang.*")
-        link_directories(${test} PRIVATE "${CMAKE_SOURCE_DIR}/../lib")
+        link_directories(${test} PRIVATE "${ZeroMQ_SOURCE_DIR}/../lib")
     endif()
   endif()
 
@@ -215,10 +218,14 @@ endforeach()
 if(ZMQ_HAVE_CURVE)
   set_tests_properties(test_security_curve PROPERTIES TIMEOUT 60)
 endif()
+set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 
-if(WIN32 AND ${POLLER} MATCHES "poll")
-  set_tests_properties(test_many_sockets PROPERTIES TIMEOUT 30)
-  set_tests_properties(test_immediate PROPERTIES TIMEOUT 30)
+if(WIN32 AND ${POLLER} MATCHES "epoll")
+  set_tests_properties(test_many_sockets PROPERTIES TIMEOUT 120)
+endif()
+
+if(WIN32 AND ENABLE_DRAFTS)
+  set_tests_properties(test_radio_dish PROPERTIES TIMEOUT 30)
 endif()
 
 #add additional required flags
