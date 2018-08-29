@@ -131,10 +131,8 @@ void zmq::udp_engine_t::plug (io_thread_t *io_thread_, session_base_t *session_)
         errno_assert (rc == 0);
 #endif
 
+#ifndef ZMQ_HAVE_WINDOWS
         rc = setsockopt (fd, SOL_SOCKET, SO_REUSEPORT, (char *) &on, sizeof (on));
-#ifdef ZMQ_HAVE_WINDOWS
-        wsa_assert (rc != SOCKET_ERROR);
-#else
         errno_assert (rc == 0);
 #endif
 
