@@ -131,6 +131,13 @@ void zmq::udp_engine_t::plug (io_thread_t *io_thread_, session_base_t *session_)
         errno_assert (rc == 0);
 #endif
 
+        rc = setsockopt (fd, SOL_SOCKET, SO_REUSEPORT, (char *) &on, sizeof (on));
+#ifdef ZMQ_HAVE_WINDOWS
+        wsa_assert (rc != SOCKET_ERROR);
+#else
+        errno_assert (rc == 0);
+#endif
+
 #ifdef ZMQ_HAVE_VXWORKS
         rc = bind (fd, (sockaddr *) address->resolved.udp_addr->bind_addr (),
                    address->resolved.udp_addr->bind_addrlen ());
