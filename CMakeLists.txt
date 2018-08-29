@@ -1082,18 +1082,18 @@ else ()
       OUTPUT_NAME "zmq"
       PREFIX "lib")
   endif()
-
 endif ()
 
 set(target_defines "")
 if(ENABLE_DRAFTS)
-  list(APPEND target_defines "ZMQ_BUILD_DRAFT_API")
-endif()
+    list(APPEND target_defines "ZMQ_BUILD_DRAFT_API")
+  endif()
 if (BUILD_STATIC)
   target_compile_definitions(libzmq-static
     PUBLIC ZMQ_STATIC ${target_defines}
   )
 endif ()
+
 if (BUILD_SHARED)
   target_compile_definitions(libzmq
     PUBLIC ${target_defines}
