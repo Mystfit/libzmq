@@ -28,7 +28,6 @@ set(tests
         test_stream_empty
         test_stream_disconnect
         test_disconnect_inproc
-        test_unbind_inproc
         test_unbind_wildcard
         test_ctx_options
         test_ctx_destroy
@@ -91,8 +90,7 @@ if(NOT WIN32)
           test_filter_ipc
           test_stream_exceeds_buffer
           test_router_mandatory_hwm
-          test_use_fd_ipc
-          test_use_fd_tcp
+          test_use_fd
           test_zmq_poll_fd
   )
   if(HAVE_FORK)
@@ -136,6 +134,7 @@ IF (ENABLE_DRAFTS)
         test_scatter_gather
         test_dgram
         test_app_meta
+        test_router_notify
     )
 ENDIF (ENABLE_DRAFTS)
 
@@ -171,7 +170,7 @@ link_libraries(libzmq ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
 else ()
 link_libraries(libzmq-static ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
 endif ()
-include_directories("${CMAKE_SOURCE_DIR}/../include" "${CMAKE_BINARY_DIR}")
+include_directories("${ZeroMQ_SOURCE_DIR}/../include" "${ZeroMQ_BINARY_DIR}")
 
 foreach(test ${tests})
   # target_sources not supported before CMake 3.1
@@ -198,7 +197,7 @@ foreach(test ${tests})
   else()
     # per-test directories not generated on OS X / Darwin
     if (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang.*")
-        link_directories(${test} PRIVATE "${CMAKE_SOURCE_DIR}/../lib")
+        link_directories(${test} PRIVATE "${ZeroMQ_SOURCE_DIR}/../lib")
     endif()
   endif()
 

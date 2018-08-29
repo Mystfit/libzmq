@@ -139,6 +139,16 @@ int zmq::router_t::xsetsockopt (int option_,
             }
             break;
 
+#ifdef ZMQ_BUILD_DRAFT_API
+        case ZMQ_ROUTER_NOTIFY:
+            if (is_int && value >= 0
+                && value <= (ZMQ_NOTIFY_CONNECT | ZMQ_NOTIFY_DISCONNECT)) {
+                options.router_notify = value;
+                return 0;
+            }
+            break;
+#endif
+
         default:
             return routing_socket_base_t::xsetsockopt (option_, optval_,
                                                        optvallen_);
@@ -165,7 +175,7 @@ void zmq::router_t::xread_activated (pipe_t *pipe_)
     if (it == _anonymous_pipes.end ())
         _fq.activated (pipe_);
     else {
-        bool routing_id_ok = identify_peer (pipe_, false);
+        const bool routing_id_ok = identify_peer (pipe_, false);
         if (routing_id_ok) {
             _anonymous_pipes.erase (it);
             _fq.attach (pipe_);
@@ -188,7 +198,7 @@ int zmq::router_t::xsend (msg_t *msg_)
 
             //  Find the pipe associated with the routing id stored in the prefix.
             //  If there's no such pipe just silently ignore the message, unless
-            //  router_mandatory is set.            ;
+            //  router_mandatory is set.
             out_pipe_t *out_pipe = lookup_out_pipe (
               blob_t (static_cast<unsigned char *> (msg_->data ()),
                       msg_->size (), zmq::reference_tag_t ()));
@@ -397,9 +407,9 @@ bool zmq::router_t::xhas_in ()
     return true;
 }
 
-static bool check_pipe_hwm (const zmq::pipe_t &pipe)
+static bool check_pipe_hwm (const zmq::pipe_t &pipe_)
 {
-    return pipe.check_hwm ();
+    return pipe_.check_hwm ();
 }
 
 bool zmq::router_t::xhas_out ()
@@ -414,17 +424,15 @@ bool zmq::router_t::xhas_out ()
     return any_of_out_pipes (check_pipe_hwm);
 }
 
-const zmq::blob_t &zmq::router_t::get_credential () const
-{
-    return _fq.get_credential ();
-}
-
 int zmq::router_t::get_peer_state (const void *routing_id_,
                                    size_t routing_id_size_) const
 {
     int res = 0;
 
-    blob_t routing_id_blob ((unsigned char *) routing_id_, routing_id_size_);
+    // TODO remove the const_cast, see comment in lookup_out_pipe
+    const blob_t routing_id_blob (
+      static_cast<unsigned char *> (const_cast<void *> (routing_id_)),
+      routing_id_size_);
     const out_pipe_t *out_pipe = lookup_out_pipe (routing_id_blob);
     if (!out_pipe) {
         errno = EHOSTUNREACH;
@@ -479,9 +487,9 @@ bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
             //  Try to remove an existing routing id entry to allow the new
             //  connection to take the routing id.
-            out_pipe_t existing_outpipe = try_erase_out_pipe (routing_id);
+            out_pipe_t *existing_outpipe = lookup_out_pipe (routing_id);
 
-            if (existing_outpipe.pipe) {
+            if (existing_outpipe) {
                 if (!_handover)
                     //  Ignore peers with duplicate ID
                     return false;
@@ -494,15 +502,16 @@ bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
                 put_uint32 (buf + 1, _next_integral_routing_id++);
                 blob_t new_routing_id (buf, sizeof buf);
 
-                existing_outpipe.pipe->set_router_socket_routing_id (
-                  new_routing_id);
+                pipe_t *const old_pipe = existing_outpipe->pipe;
 
-                add_out_pipe (ZMQ_MOVE (new_routing_id), existing_outpipe.pipe);
+                erase_out_pipe (old_pipe);
+                old_pipe->set_router_socket_routing_id (new_routing_id);
+                add_out_pipe (ZMQ_MOVE (new_routing_id), old_pipe);
 
-                if (existing_outpipe.pipe == _current_in)
+                if (old_pipe == _current_in)
                     _terminate_current_in = true;
                 else
-                    existing_outpipe.pipe->terminate (true);
+                    old_pipe->terminate (true);
             }
         }
     }

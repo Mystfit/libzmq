@@ -86,8 +86,9 @@ void zmq::server_t::xread_activated (pipe_t *pipe_)
 
 void zmq::server_t::xwrite_activated (pipe_t *pipe_)
 {
+    const out_pipes_t::iterator end = _out_pipes.end ();
     out_pipes_t::iterator it;
-    for (it = _out_pipes.begin (); it != _out_pipes.end (); ++it)
+    for (it = _out_pipes.begin (); it != end; ++it)
         if (it->second.pipe == pipe_)
             break;
 
@@ -177,9 +178,4 @@ bool zmq::server_t::xhas_out ()
     //  attempt to write succeeds depends on which pipe the message is going
     //  to be routed to.
     return true;
-}
-
-const zmq::blob_t &zmq::server_t::get_credential () const
-{
-    return _fq.get_credential ();
 }

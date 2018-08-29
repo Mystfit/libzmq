@@ -100,15 +100,11 @@ int zmq::dish_t::xjoin (const char *group_)
         return -1;
     }
 
-    subscriptions_t::iterator it = _subscriptions.find (group);
-
     //  User cannot join same group twice
-    if (it != _subscriptions.end ()) {
+    if (!_subscriptions.insert (group).second) {
         errno = EINVAL;
         return -1;
     }
-
-    _subscriptions.insert (group);
 
     msg_t msg;
     int rc = msg.init_join ();
@@ -223,15 +219,11 @@ bool zmq::dish_t::xhas_in ()
     return true;
 }
 
-const zmq::blob_t &zmq::dish_t::get_credential () const
-{
-    return _fq.get_credential ();
-}
-
 void zmq::dish_t::send_subscriptions (pipe_t *pipe_)
 {
-    for (subscriptions_t::iterator it = _subscriptions.begin ();
-         it != _subscriptions.end (); ++it) {
+    for (subscriptions_t::iterator it = _subscriptions.begin (),
+                                   end = _subscriptions.end ();
+         it != end; ++it) {
         msg_t msg;
         int rc = msg.init_join ();
         errno_assert (rc == 0);
