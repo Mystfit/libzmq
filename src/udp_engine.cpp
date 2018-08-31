@@ -206,6 +206,17 @@ void zmq::udp_engine_t::plug (io_thread_t *io_thread_, session_base_t *session_)
         bool multicast = udp_addr->is_mcast ();
 
         if (multicast) {
+            //  Multicast addresses should be allowed to bind to more than
+            //  one port as all ports should receive the message
+#ifdef SO_REUSEPORT
+            rc = setsockopt (_fd, SOL_SOCKET, SO_REUSEPORT,
+                             reinterpret_cast<char *> (&on), sizeof (on));
+#ifdef ZMQ_HAVE_WINDOWS
+            wsa_assert (rc != SOCKET_ERROR);
+#else
+            errno_assert (rc == 0);
+#endif
+#endif
             //  In multicast we should bind ANY and use the mreq struct to
             //  specify the interface
             any.set_port (bind_addr->port ());
