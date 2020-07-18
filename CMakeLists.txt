@@ -1410,6 +1410,9 @@ foreach(target ${target_outputs})
   target_include_directories(
     ${target} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> $<INSTALL_INTERFACE:include>)
+  if(ANDROID)
+    target_compile_definitions(${target} PRIVATE ZMQ_HAS_ANDROID)
+  endif()
 endforeach()
 
 if(BUILD_SHARED)
